@@ -1,0 +1,11 @@
+# Okruženje
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Podaci
+data/
+
+# Keš 
+artifacts/cache/
