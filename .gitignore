@@ -9,3 +9,7 @@ data/
 
 # Keš 
 artifacts/cache/
+
+# Devenv
+.envrc
+*devenv*
