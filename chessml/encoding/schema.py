@@ -1,13 +1,13 @@
 from pathlib import Path
-
+import chess
 import numpy as np
 
 # --- boards[i]: 70 numbers ---------------------------------------------------
 BOARD_DIM = 70
-SQ_SLICE = slice(0, 64)          # piece code per square, 0 = empty
+SQUARES_SLICE = slice(0, 64)          # piece code per square, 0 = empty
 CASTLING_SLICE = slice(64, 68)   # castling rights: K, Q, k, q (0/1)
 TURN_IDX = 68                    # 0 = white to move
-EP_IDX = 69                      # 0 = no ep, otherwise square + 1 (1..64)
+ENPASSANT_IDX = 69                      # 0 = no ep, otherwise square + 1 (1..64)
 
 # Piece codes: 0 empty, 1..6 white P N B R Q K, 7..12 black.
 BLACK_OFFSET = 6
@@ -45,3 +45,15 @@ OFF_DTYPE = np.int32
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]   # schema.py -> encoding -> chessml -> koren
 VOCAB_PATH = PROJECT_ROOT / "artifacts" / "move_vocab.json"
+
+_pieces_and_colors =[(piece_type, color) for color in (chess.WHITE, chess.BLACK) for piece_type in range(chess.PAWN, chess.KING + 1)] 
+PIECES_TO_CODES = {pc: i + 1 for i, pc in enumerate(_pieces_and_colors)}
+CODES_TO_PIECES = {v: k for k,v in PIECES_TO_CODES.items()}
+
+CACHE_FILES = {
+    "positions": "{split}_positions.npy",
+    "labels":    "{split}_labels.npy",
+    "meta":      "{split}_meta.npy",
+    "seq_flat":  "{split}_seq_flat.npy",
+    "seq_off":   "{split}_seq_off.npy",
+}
