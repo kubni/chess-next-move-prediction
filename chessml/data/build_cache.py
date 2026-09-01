@@ -101,7 +101,8 @@ def build_cache(pgn_path: Path, n_games: int, vocab: dict[str, int], split: Lite
    np.save(file=out_dir / CACHE_FILES["positions"].format(split=split), arr=positions[:i])  # :i because we probably have some empty ones left over (due to generous move_cap)
    np.save(file=out_dir / CACHE_FILES["labels"].format(split=split), arr=labels[:i])  
    np.save(file=out_dir / CACHE_FILES["meta"].format(split=split), arr=meta[:i])  
-   np.save(file=out_dir / CACHE_FILES["seq_flat"].format(split=split), arr=seq_flat[:game_counter + 1])  
+   np.save(file=out_dir / CACHE_FILES["seq_flat"].format(split=split), arr=seq_flat[:i])  
+   np.save(file=out_dir / CACHE_FILES["seq_off"].format(split=split), arr=seq_off[:game_counter + 1])  
    
 
 if __name__ == '__main__':
