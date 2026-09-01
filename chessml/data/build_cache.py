@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from chessml.encoding.move_vocab import load_move_vocab
 from typing import Literal
 from chess import Board, Move, Piece
 from chessml.encoding.schema import PIECES_TO_CODES, BOARD_DIM, CASTLING_SLICE, ENPASSANT_IDX, TURN_IDX, CACHE_FILES, DEFAULT_CACHE_DIR
@@ -34,11 +35,11 @@ def encode_board(board: Board) -> npt.NDArray[np.int8]:
   return encoded_board
   
   
-def build_cache(pgn_path: Path, n_games: int, split: Literal["trainval", "test"], out_dir: Path = DEFAULT_CACHE_DIR):
+def build_cache(pgn_path: Path, n_games: int, vocab: dict[str, int], split: Literal["trainval", "test"], out_dir: Path = DEFAULT_CACHE_DIR):
    game_counter: int = 0;
-
    move_cap = n_games * 150 # Upper limit for amount of moves we hold
    positions = np.empty((move_cap, BOARD_DIM), dtype=np.int8)
+   labels = np.empty(move_cap, dtype=np.int16)
    i = 0;
    with open(pgn_path) as pgn:
      while game_counter < n_games:
@@ -69,7 +70,6 @@ def build_cache(pgn_path: Path, n_games: int, split: Literal["trainval", "test"]
            break
 
         board = game.board()
-
         for move in game.mainline_moves():
            # Flip the board when black is playing
            if board.turn == chess.BLACK:
@@ -79,6 +79,7 @@ def build_cache(pgn_path: Path, n_games: int, split: Literal["trainval", "test"]
               view, mv = board, move
 
            positions[i] = encode_board(view)
+           labels[i] = vocab[mv.uci()]
            i += 1
            
            # Play the actual move
@@ -90,6 +91,8 @@ def build_cache(pgn_path: Path, n_games: int, split: Literal["trainval", "test"]
    # Cache the positions
    out_dir.mkdir(parents=True, exist_ok=True)
    np.save(file=out_dir / CACHE_FILES["positions"].format(split=split), arr=positions[:i])  # :i because we probably have some empty ones left over (due to generous move_cap)
+   np.save(file=out_dir / CACHE_FILES["labels"].format(split=split), arr=labels[:i])  
+   
       
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -102,7 +105,8 @@ if __name__ == '__main__':
     if not args.pgn.is_file():
         parser.error(f"Hello cruel world, {args.pgn} is not a file!")
 
-    build_cache(pgn_path=args.pgn, n_games=args.games, split=args.split, out_dir=args.output)
+    _, vocab = load_move_vocab()
+    build_cache(pgn_path=args.pgn, n_games=args.games, vocab=vocab, split=args.split, out_dir=args.output)
    
 
 # TODO:
