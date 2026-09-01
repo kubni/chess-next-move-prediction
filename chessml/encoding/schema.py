@@ -1,0 +1,47 @@
+from pathlib import Path
+
+import numpy as np
+
+# --- boards[i]: 70 numbers ---------------------------------------------------
+BOARD_DIM = 70
+SQ_SLICE = slice(0, 64)          # piece code per square, 0 = empty
+CASTLING_SLICE = slice(64, 68)   # castling rights: K, Q, k, q (0/1)
+TURN_IDX = 68                    # 0 = white to move
+EP_IDX = 69                      # 0 = no ep, otherwise square + 1 (1..64)
+
+# Piece codes: 0 empty, 1..6 white P N B R Q K, 7..12 black.
+BLACK_OFFSET = 6
+
+
+def piece_code(piece_type: int, is_white: bool) -> int:
+    """piece_type is 1..6 from python-chess; returns 1..6 for white, 7..12 for black."""
+    return piece_type if is_white else piece_type + BLACK_OFFSET
+
+
+# --- meta[i]: 3 numbers -------------------------------------------------------
+META_DIM = 3
+META_GAME_ID, META_PLY, META_ELO_BUCKET = 0, 1, 2
+
+# META_GAME_ID indexes seq_off of the SAME split, not the game's position in the PGN.
+# Contract: seq_flat[seq_off[meta[i, META_GAME_ID]] + meta[i, META_PLY]] == labels[i]
+
+ELO_BUCKETS = [(0, 1200), (1200, 1500), (1500, 1800), (1800, 2100), (2100, 9999)]
+
+
+def elo_bucket(elo: int) -> int:
+    """Rating -> bucket index. Anything above the last bound falls into the last bucket."""
+    for i, (low, high) in enumerate(ELO_BUCKETS):
+        if low <= elo < high:
+            return i
+    return len(ELO_BUCKETS) - 1
+
+
+# --- dtypes: chosen by value range --------------------------------------------
+BOARD_DTYPE = np.int8    # 0..64
+LABEL_DTYPE = np.int16   # move index 0..1967
+META_DTYPE = np.int32    # game count exceeds int16
+SEQ_DTYPE = np.int16     # same label space as labels
+OFF_DTYPE = np.int32 
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]   # schema.py -> encoding -> chessml -> koren
+VOCAB_PATH = PROJECT_ROOT / "artifacts" / "move_vocab.json"
