@@ -43,9 +43,6 @@ META_DTYPE = np.int32    # game count exceeds int16
 SEQ_DTYPE = np.int16     # same label space as labels
 OFF_DTYPE = np.int32 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]   # schema.py -> encoding -> chessml -> koren
-VOCAB_PATH = PROJECT_ROOT / "artifacts" / "move_vocab.json"
-
 _pieces_and_colors =[(piece_type, color) for color in (chess.WHITE, chess.BLACK) for piece_type in range(chess.PAWN, chess.KING + 1)] 
 PIECES_TO_CODES = {pc: i + 1 for i, pc in enumerate(_pieces_and_colors)}
 CODES_TO_PIECES = {v: k for k,v in PIECES_TO_CODES.items()}
@@ -57,3 +54,8 @@ CACHE_FILES = {
     "seq_flat":  "{split}_seq_flat.npy",
     "seq_off":   "{split}_seq_off.npy",
 }
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]   
+VOCAB_PATH = PROJECT_ROOT / "artifacts" / "move_vocab.json"
+DEFAULT_CACHE_DIR = PROJECT_ROOT / "artifacts" / "cache"

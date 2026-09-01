@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
+from typing import Literal
 from chess import Board, Move, Piece
-from chessml.encoding.schema import PIECES_TO_CODES, BOARD_DIM, CASTLING_SLICE, ENPASSANT_IDX, TURN_IDX
+from chessml.encoding.schema import PIECES_TO_CODES, BOARD_DIM, CASTLING_SLICE, ENPASSANT_IDX, TURN_IDX, CACHE_FILES, DEFAULT_CACHE_DIR
 from pathlib import Path
 import sys, argparse
 import chess.pgn
@@ -8,7 +9,7 @@ import numpy as np
 import numpy.typing as npt
 
 
-def encode_board(board: Board, move: Move) -> npt.NDArray[np.int8]:
+def encode_board(board: Board) -> npt.NDArray[np.int8]:
   encoded_board: npt.NDArray[np.int8] = np.zeros(BOARD_DIM, dtype=np.int8)
 
   # First we get the piece codes
@@ -33,12 +34,12 @@ def encode_board(board: Board, move: Move) -> npt.NDArray[np.int8]:
   return encoded_board
   
   
-     
-   
-
-
-def build_cache(pgn_path: Path, n_games: int):
+def build_cache(pgn_path: Path, n_games: int, split: Literal["trainval", "test"], out_dir: Path = DEFAULT_CACHE_DIR):
    game_counter: int = 0;
+
+   move_cap = n_games * 150 # Upper limit for amount of moves we hold
+   positions = np.empty((move_cap, BOARD_DIM), dtype=np.int8)
+   i = 0;
    with open(pgn_path) as pgn:
      while game_counter < n_games:
         # We save the old amount of bytes read, so we can go back to that point in file if needed
@@ -54,7 +55,7 @@ def build_cache(pgn_path: Path, n_games: int):
         if headers.get("Termination") != "Normal" or not event_header.startswith("Rated") or "Classical" not in event_header:
            continue
         
-        # Now, if we got here, it means that the game is appropriate for us.
+        # If we got here, it means that the game is appropriate.
         # However, our cursor already went past it in order to read its headers.
         # Thats why we go back to the old cursor position and parse the whole game.
         pgn.seek(old_cursor_pos)
@@ -69,41 +70,43 @@ def build_cache(pgn_path: Path, n_games: int):
 
         board = game.board()
 
+        for move in game.mainline_moves():
+           # Flip the board when black is playing
+           if board.turn == chess.BLACK:
+              view = board.mirror()
+              mv = chess.Move(chess.square_mirror(move.from_square), chess.square_mirror(move.to_square), move.promotion)
+           else:
+              view, mv = board, move
 
-        move_cap = n_games * 150 # Upper limit for amount of moves we hold
-        positions = np.empty((move_cap, BOARD_DIM), dtype=np.int8)
-
-        print("Going through individual moves for current game...")
-        for i, move in enumerate(game.mainline_moves()):
-           
-           positions[i] = encode_board(board, move)
+           positions[i] = encode_board(view)
+           i += 1
            
            # Play the actual move
            board.push(move)
 
-        print("Finished with all moves for current game.")
-
-           
-        print("Game counter: ", game_counter)
-        
         
         game_counter = game_counter + 1
 
+   # Cache the positions
+   out_dir.mkdir(parents=True, exist_ok=True)
+   np.save(file=out_dir / CACHE_FILES["positions"].format(split=split), arr=positions[:i])  # :i because we probably have some empty ones left over (due to generous move_cap)
+      
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--pgn", help="Path to the PGN file", type=Path, required=True)
     parser.add_argument("-s", "--split", help="Specifies which split is the pgn file used for", required=True, choices=["trainval", "test"])
     parser.add_argument("-g", "--games", help="Specifies how many games will be used for the split", type=int, required=True)
+    parser.add_argument("-o", "--output", help="Specifies the output directory where the generated cache files will be saved.", type=Path, default=DEFAULT_CACHE_DIR)
     args = parser.parse_args()
 
     if not args.pgn.is_file():
         parser.error(f"Hello cruel world, {args.pgn} is not a file!")
 
-    build_cache(pgn_path=args.pgn, n_games=args.games)
+    build_cache(pgn_path=args.pgn, n_games=args.games, split=args.split, out_dir=args.output)
    
 
 # TODO:
 # 1) Move the helper functions if needed
 # 2) [Important] Check whether the headers + tell/seek is actually helping or not
 # 3) Apparently Lichess changed the naming of some modes at some point. Maybe we should rely on TimeControl header instead of the naming?
-# 4) Color flipping?
+# 4) Color flipping/mirroring?  
