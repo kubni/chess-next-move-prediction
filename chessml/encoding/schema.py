@@ -37,7 +37,7 @@ def elo_bucket(elo: int) -> int:
 
 
 # --- dtypes: chosen by value range --------------------------------------------
-BOARD_DTYPE = np.int8    # 0..64
+POSITION_DTYPE = np.int8    # 0..64
 LABEL_DTYPE = np.int16   # move index 0..1967
 META_DTYPE = np.int32    # game count exceeds int16
 SEQ_DTYPE = np.int16     # same label space as labels

@@ -2,7 +2,7 @@
 from chessml.encoding.move_vocab import load_move_vocab
 from typing import Literal
 from chess import Board, Move, Piece
-from chessml.encoding.schema import PIECES_TO_CODES, BOARD_DIM, CASTLING_SLICE, ENPASSANT_IDX, TURN_IDX, CACHE_FILES, DEFAULT_CACHE_DIR
+from chessml.encoding.schema import PIECES_TO_CODES, BOARD_DIM, CASTLING_SLICE, ENPASSANT_IDX, TURN_IDX, CACHE_FILES, DEFAULT_CACHE_DIR, META_DIM, elo_bucket, META_DTYPE, LABEL_DTYPE, POSITION_DTYPE, SEQ_DTYPE, OFF_DTYPE
 from pathlib import Path
 import sys, argparse
 import chess.pgn
@@ -38,8 +38,13 @@ def encode_board(board: Board) -> npt.NDArray[np.int8]:
 def build_cache(pgn_path: Path, n_games: int, vocab: dict[str, int], split: Literal["trainval", "test"], out_dir: Path = DEFAULT_CACHE_DIR):
    game_counter: int = 0;
    move_cap = n_games * 150 # Upper limit for amount of moves we hold
-   positions = np.empty((move_cap, BOARD_DIM), dtype=np.int8)
-   labels = np.empty(move_cap, dtype=np.int16)
+   positions = np.empty((move_cap, BOARD_DIM), dtype=POSITION_DTYPE)
+   labels = np.empty(move_cap, dtype=LABEL_DTYPE)
+   meta = np.empty((move_cap, META_DIM), dtype=META_DTYPE) # TODO: np.int16?
+   seq_flat = np.empty(move_cap, dtype=SEQ_DTYPE)
+   seq_off = np.empty(n_games + 1, dtype=OFF_DTYPE)
+   seq_off[0] = 0
+   
    i = 0;
    with open(pgn_path) as pgn:
      while game_counter < n_games:
@@ -79,21 +84,26 @@ def build_cache(pgn_path: Path, n_games: int, vocab: dict[str, int], split: Lite
               view, mv = board, move
 
            positions[i] = encode_board(view)
-           labels[i] = vocab[mv.uci()]
-           i += 1
+           encoded_move = vocab[mv.uci()]
+           labels[i] = encoded_move 
+           meta[i] = [game_counter, board.ply(), elo_bucket(white_elo if board.turn == chess.WHITE else black_elo)]
+           seq_flat[i] = encoded_move
            
+           i += 1
            # Play the actual move
            board.push(move)
 
-        
-        game_counter = game_counter + 1
+        seq_off[game_counter + 1] = i  
+        game_counter += 1
 
    # Cache the positions
    out_dir.mkdir(parents=True, exist_ok=True)
    np.save(file=out_dir / CACHE_FILES["positions"].format(split=split), arr=positions[:i])  # :i because we probably have some empty ones left over (due to generous move_cap)
    np.save(file=out_dir / CACHE_FILES["labels"].format(split=split), arr=labels[:i])  
+   np.save(file=out_dir / CACHE_FILES["meta"].format(split=split), arr=meta[:i])  
+   np.save(file=out_dir / CACHE_FILES["seq_flat"].format(split=split), arr=seq_flat[:game_counter + 1])  
    
-      
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--pgn", help="Path to the PGN file", type=Path, required=True)
