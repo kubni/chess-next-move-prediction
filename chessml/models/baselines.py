@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
+from chessml.eval.metrics import evaluate
 import json
-from chessml.encoding.move_vocab import VOCAB_SIZE
+from chessml.encoding.move_vocab import VOCAB_SIZE, load_move_vocab
 from chessml.encoding.schema import POSITION_DTYPE, LABEL_DTYPE, CACHE_FILES, DEFAULT_CACHE_DIR, MODELS_DIR, METRICS_DIR
 
 import numpy as np
@@ -70,7 +71,7 @@ def train_logistic_regression(train_positions_indices: npt.NDArray[np.int64],
                 correct += (model(to_planes(x)).argmax(1) == y).sum().item()
 
         val_acc_current = correct / len(val_positions_indices)
-        print(epoch, loss.item(), correct / len(val_positions_indices))
+        # print(epoch, loss.item(), correct / len(val_positions_indices))
 
 
         if val_acc_current > best_val_acc + min_delta:
@@ -129,6 +130,23 @@ def try_multiple_learning_rates(
 
     
 
+def as_predict_fn(model: nn.Module, device: str | None = None):
+    """
+    Wraps given model into the format that evaluate() wants.
+    """
+    device = device or pick_device()
+    model = model.to(device).eval()
+
+    @torch.no_grad()
+    def predict(positions_batch: npt.NDArray[POSITION_DTYPE]) -> torch.Tensor:
+        x = torch.from_numpy(positions_batch).to(device)
+        return model(to_planes(x)).float().cpu()
+
+
+    return predict
+
+
+
 
 if __name__ == '__main__':
     d = DEFAULT_CACHE_DIR
@@ -156,9 +174,22 @@ if __name__ == '__main__':
 
     best_lr = float(max(lr_results, key=lambda k: lr_results[k]))
 
+    _, move_to_index = load_move_vocab()
+
+    result = evaluate(
+        as_predict_fn(model),
+        positions[val_positions_indices],
+        labels[val_positions_indices],
+        meta[val_positions_indices],
+        move_to_index,
+    )
+    
+        
     # Save the results:
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     METRICS_DIR.mkdir(parents=True, exist_ok=True) 
+
+    # Shows us how the best model was chosen
     (METRICS_DIR / "logreg_lr_testing.json").write_text(
         json.dumps(
             {
@@ -172,6 +203,12 @@ if __name__ == '__main__':
         encoding="utf-8",
     )
 
+    # Shows us detailed acc stats, legality-related stuff, ratings, etc.
+    (METRICS_DIR / "logreg_val_evaluate.json").write_text(
+        json.dumps(result, indent=2), encoding="utf-8"
+    )
+
+    
     # Save the actual best found model
     torch.save(
         {
@@ -180,11 +217,11 @@ if __name__ == '__main__':
             "vocab_size": VOCAB_SIZE,
             "features": FEATURES,
             "learning_rate": best_lr,
-            "val_accuracy": lr_results[str(best_lr)],
+            "batch_size": batch_size,
+            "seed": 0
         },
         MODELS_DIR / "logreg.pt",
     )
 
 
-# TODO:
-# 1) Utilize evaluate() and test set
+# TODO: assert result["top1"] == lr_results[str(best_lr)]
