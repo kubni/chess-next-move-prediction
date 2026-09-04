@@ -9,14 +9,6 @@ CASTLING_SLICE = slice(64, 68)   # castling rights: K, Q, k, q (0/1)
 TURN_IDX = 68                    # True = white to move
 ENPASSANT_IDX = 69                      # 0 = no ep, otherwise square + 1 (1..64)
 EXTRAS_SLICE = slice(CASTLING_SLICE.start, TURN_IDX + 1) #used for to planes encoding
-# Piece codes: 0 empty, 1..6 white P N B R Q K, 7..12 black.
-BLACK_OFFSET = 6
-
-
-def piece_code(piece_type: int, is_white: bool) -> int:
-    """piece_type is 1..6 from python-chess; returns 1..6 for white, 7..12 for black."""
-    return piece_type if is_white else piece_type + BLACK_OFFSET
-
 
 # --- meta[i]: 3 numbers -------------------------------------------------------
 META_DIM = 3
