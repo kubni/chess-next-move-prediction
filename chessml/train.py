@@ -13,7 +13,7 @@ BATCH_SIZE = 1024
 # One log line per this many optimizer steps.
 LOG_EVERY = 500
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
-
+ARTIFACTS_DIR = Path(__file__).resolve().parent.parent / "artifacts"
 
 def get_device() -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -41,6 +41,32 @@ def setup_logging(name: str) -> logging.Logger:
         handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
         logger.addHandler(handler)
     return logger
+
+def save_checkpoint(model: nn.Module, name: str, config: dict, epoch: int) -> Path:
+    """
+    Overwrite artifacts/{name}.pt with the model's current weights in fp16.
+
+    Called after every epoch so a crashed run still leaves a scoreable model
+    behind. 
+
+    Args:
+        config: whatever the notebook needs to rebuild the architecture before
+            loading the weights, e.g. {'hidden': 512, 'dropout': 0.1}.
+
+    Returns:
+        Path of the written file.
+    """
+    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+    path = ARTIFACTS_DIR / f"{name}.pt"
+
+    # Only floating point tensors are halved.
+    state_dict = {
+        k: (v.detach().cpu().half() if v.is_floating_point() else v.detach().cpu())
+        for k, v in model.state_dict().items()
+    }
+
+    torch.save({"state_dict": state_dict, "config": config, "epoch": epoch}, path)
+    return path
 
 def make_loaders(
     positions: npt.NDArray[np.int8],
@@ -90,6 +116,7 @@ def train_model(
     train_loader: DataLoader,
     validation_loader: DataLoader,
     name: str,
+    config:dict,
 ) -> dict:
     """
     Train one model and return the course-format metrics dict.
@@ -135,7 +162,7 @@ def train_model(
         metrics["val_accuracy"].append(val_accuracy)
         metrics["val_steps"].append(training_step)
         logger.info(f"epoch {epoch} val_loss {val_loss:.4f} val_acc {val_accuracy:.4f}")
-
+        save_checkpoint(model, name, config, epoch)
         pbar.set_postfix({"loss": val_loss, "accuracy": val_accuracy})
         pbar.update(1)
 
