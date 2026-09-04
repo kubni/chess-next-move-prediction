@@ -4,7 +4,7 @@ from typing import Literal
 from chess import Board, Move, Piece
 from chessml.encoding.schema import PIECES_TO_CODES, BOARD_DIM, CASTLING_SLICE, ENPASSANT_IDX, TURN_IDX, CACHE_FILES, DEFAULT_CACHE_DIR, META_DIM, elo_bucket, META_DTYPE, LABEL_DTYPE, POSITION_DTYPE, SEQ_DTYPE, OFF_DTYPE
 from pathlib import Path
-import sys, argparse
+import argparse
 import chess.pgn
 import numpy as np
 import numpy.typing as npt
@@ -37,7 +37,7 @@ def encode_board(board: Board) -> npt.NDArray[np.int8]:
   
 def build_cache(pgn_path: Path, n_games: int, vocab: dict[str, int], split: Literal["trainval", "test"], out_dir: Path = DEFAULT_CACHE_DIR):
    game_counter: int = 0;
-   move_cap = n_games * 150 # Upper limit for amount of moves we hold
+   move_cap = min(n_games * 150, 50000000) # Upper limit for amount of moves we hold
    positions = np.empty((move_cap, BOARD_DIM), dtype=POSITION_DTYPE)
    labels = np.empty(move_cap, dtype=LABEL_DTYPE)
    meta = np.empty((move_cap, META_DIM), dtype=META_DTYPE) # TODO: np.int16?
@@ -54,20 +54,30 @@ def build_cache(pgn_path: Path, n_games: int, vocab: dict[str, int], split: Lite
         # Read ONLY the headers instead of the whole game, so we don't do potentially unnecessary parsing 
         headers = chess.pgn.read_headers(pgn)
         if headers is None:
-           break
+          # End of the file. We report how many games we actually parsed, since it can be lower than n_games.
+          print(f"The number of actually parsed games: {game_counter}.\n The number of games we wanted to parse: {n_games}.")
+          break
 
         # Filter out the games that we don't need
         event_header = headers.get("Event", "")
         if headers.get("Termination") != "Normal" or not event_header.startswith("Rated") or "Classical" not in event_header:
            continue
         
+        # Sometimes the elo is unknown (denoted by a '?' mark),
+        # so we skip such games
+        white_elo = headers.get("WhiteElo", "")
+        black_elo = headers.get("BlackElo", "")
+        if not (white_elo.isdecimal() and black_elo.isdecimal()):
+          continue
+
+        white_elo = int(white_elo)
+        black_elo = int(black_elo)
+         
         # If we got here, it means that the game is appropriate.
         # However, our cursor already went past it in order to read its headers.
         # Thats why we go back to the old cursor position and parse the whole game.
         pgn.seek(old_cursor_pos)
 
-        white_elo = int(headers["WhiteElo"])
-        black_elo = int(headers["BlackElo"])
         
         game = chess.pgn.read_game(pgn)
         if game is None:
@@ -125,3 +135,5 @@ if __name__ == '__main__':
 # 2) [Important] Check whether the headers + tell/seek is actually helping or not
 # 3) Apparently Lichess changed the naming of some modes at some point. Maybe we should rely on TimeControl header instead of the naming?
 # 4) Color flipping/mirroring?  
+
+# 5) [Important] logging instead of prints 
