@@ -1,46 +1,22 @@
 #!/usr/bin/env python3
 from chessml.encoding.move_vocab import load_move_vocab
 from typing import Literal
-from chess import Board, Move, Piece
-from chessml.encoding.schema import PIECES_TO_CODES, BOARD_DIM, CASTLING_SLICE, ENPASSANT_IDX, TURN_IDX, CACHE_FILES, DEFAULT_CACHE_DIR, META_DIM, elo_bucket, META_DTYPE, LABEL_DTYPE, POSITION_DTYPE, SEQ_DTYPE, OFF_DTYPE
+from chess import Move
+from chessml.encoding.schema import BOARD_DIM, CACHE_FILES, DEFAULT_CACHE_DIR, META_DIM, elo_bucket, META_DTYPE, LABEL_DTYPE, POSITION_DTYPE, SEQ_DTYPE, OFF_DTYPE
+from chessml.encoding.board_codec import encode_board
 from pathlib import Path
 import argparse
 import chess.pgn
 import numpy as np
 import numpy.typing as npt
 
-
-def encode_board(board: Board) -> npt.NDArray[np.int8]:
-  encoded_board: npt.NDArray[np.int8] = np.zeros(BOARD_DIM, dtype=np.int8)
-
-  # First we get the piece codes
-  piece_map: dict[int, Piece] = board.piece_map()
-  for i, piece in piece_map.items():
-     encoded_board[i] = PIECES_TO_CODES[(piece.piece_type, piece.color)]
-
-  # Then the castling rights 
-  encoded_board[CASTLING_SLICE] = [
-     board.has_kingside_castling_rights(chess.WHITE),
-     board.has_queenside_castling_rights(chess.WHITE),  
-     board.has_kingside_castling_rights(chess.BLACK),
-     board.has_queenside_castling_rights(chess.BLACK)  
-  ]
-
-  # Then whose turn it is
-  encoded_board[TURN_IDX] = board.turn
-  
-  # Then enpassant
-  encoded_board[ENPASSANT_IDX] = board.ep_square + 1 if board.ep_square is not None else 0
-
-  return encoded_board
-  
   
 def build_cache(pgn_path: Path, n_games: int, vocab: dict[str, int], split: Literal["trainval", "test"], out_dir: Path = DEFAULT_CACHE_DIR):
    game_counter: int = 0;
    move_cap = min(n_games * 150, 50000000) # Upper limit for amount of moves we hold
    positions = np.empty((move_cap, BOARD_DIM), dtype=POSITION_DTYPE)
    labels = np.empty(move_cap, dtype=LABEL_DTYPE)
-   meta = np.empty((move_cap, META_DIM), dtype=META_DTYPE) # TODO: np.int16?
+   meta = np.empty((move_cap, META_DIM), dtype=META_DTYPE) 
    seq_flat = np.empty(move_cap, dtype=SEQ_DTYPE)
    seq_off = np.empty(n_games + 1, dtype=OFF_DTYPE)
    seq_off[0] = 0
