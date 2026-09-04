@@ -6,7 +6,7 @@ import numpy as np
 BOARD_DIM = 70
 SQUARES_SLICE = slice(0, 64)          # piece code per square, 0 = empty
 CASTLING_SLICE = slice(64, 68)   # castling rights: K, Q, k, q (0/1)
-TURN_IDX = 68                    # 0 = white to move
+TURN_IDX = 68                    # True = white to move
 ENPASSANT_IDX = 69                      # 0 = no ep, otherwise square + 1 (1..64)
 EXTRAS_SLICE = slice(CASTLING_SLICE.start, TURN_IDX + 1) #used for to planes encoding
 # Piece codes: 0 empty, 1..6 white P N B R Q K, 7..12 black.
@@ -45,17 +45,23 @@ OFF_DTYPE = np.int32
 
 _pieces_and_colors =[(piece_type, color) for color in (chess.WHITE, chess.BLACK) for piece_type in range(chess.PAWN, chess.KING + 1)] 
 PIECES_TO_CODES = {pc: i + 1 for i, pc in enumerate(_pieces_and_colors)}
-CODES_TO_PIECES = {v: k for k,v in PIECES_TO_CODES.items()}
+CODES_TO_PIECES = {v: chess.Piece(*k) for k,v in PIECES_TO_CODES.items()}
 
 CACHE_FILES = {
     "positions": "{split}_positions.npy",
+    "train_game_ids": "train_game_ids.npy",
+    "val_game_ids": "val_game_ids.npy",
     "labels":    "{split}_labels.npy",
     "meta":      "{split}_meta.npy",
     "seq_flat":  "{split}_seq_flat.npy",
     "seq_off":   "{split}_seq_off.npy",
+    
 }
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]   
 VOCAB_PATH = PROJECT_ROOT / "artifacts" / "move_vocab.json"
 DEFAULT_CACHE_DIR = PROJECT_ROOT / "artifacts" / "cache"
+
+
+# TODO: Check whether some of this stuff should be moved to some other file
