@@ -49,10 +49,13 @@ CODES_TO_PIECES = {v: k for k,v in PIECES_TO_CODES.items()}
 
 CACHE_FILES = {
     "positions": "{split}_positions.npy",
+    "train_game_ids": "train_game_ids.npy",
+    "val_game_ids": "val_game_ids.npy",
     "labels":    "{split}_labels.npy",
     "meta":      "{split}_meta.npy",
     "seq_flat":  "{split}_seq_flat.npy",
     "seq_off":   "{split}_seq_off.npy",
+    
 }
 
 

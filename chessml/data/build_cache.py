@@ -78,7 +78,6 @@ def build_cache(pgn_path: Path, n_games: int, vocab: dict[str, int], split: Lite
         # Thats why we go back to the old cursor position and parse the whole game.
         pgn.seek(old_cursor_pos)
 
-        
         game = chess.pgn.read_game(pgn)
         if game is None:
            print(f"Error: game is None after read_game call. ")
