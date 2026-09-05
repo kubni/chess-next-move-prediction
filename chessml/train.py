@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from chessml.encoding.schema import LABEL_DTYPE, POSITION_DTYPE
+from chessml.encoding.schema import LABEL_DTYPE, POSITION_DTYPE, MODELS_DIR
 import logging
 from pathlib import Path
 
@@ -14,7 +14,6 @@ BATCH_SIZE = 1024
 # One log line per this many optimizer steps.
 LOG_EVERY = 500
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
-ARTIFACTS_DIR = Path(__file__).resolve().parent.parent / "artifacts"
 
 def get_device() -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -50,8 +49,8 @@ def save_checkpoint(model: nn.Module, name: str, config: dict, epoch: int) -> Pa
     Returns:
         Path of the written file.
     """
-    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
-    path = ARTIFACTS_DIR / f"{name}.pt"
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    path = MODELS_DIR / f"{name}.pt"
 
     # Only floating point tensors are halved.
     state_dict = {
