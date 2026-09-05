@@ -7,7 +7,6 @@ import numpy as np
 import numpy.typing as npt
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, SubsetRandomSampler, TensorDataset
 from tqdm.auto import tqdm
 
 RANDOM_STATE = 1219
@@ -19,13 +18,6 @@ ARTIFACTS_DIR = Path(__file__).resolve().parent.parent / "artifacts"
 
 def get_device() -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-def bind_gpu(data):
-    device = get_device()
-    if isinstance(data, (list, tuple)):
-        return [bind_gpu(data_elem) for data_elem in data]
-    return data.to(device, non_blocking=True)
 
 
 def setup_logging(name: str) -> logging.Logger:
@@ -48,7 +40,7 @@ def save_checkpoint(model: nn.Module, name: str, config: dict, epoch: int) -> Pa
     """
     Overwrite artifacts/{name}.pt with the model's current weights in fp16.
 
-    Called after every epoch so a crashed run still leaves a scoreable model
+    Called after every improved epoch so a crashed run still leaves a scoreable model
     behind. 
 
     Args:
@@ -70,43 +62,27 @@ def save_checkpoint(model: nn.Module, name: str, config: dict, epoch: int) -> Pa
     torch.save({"state_dict": state_dict, "config": config, "epoch": epoch}, path)
     return path
 
-# def make_loaders(
-#     positions: npt.NDArray[np.int8],
-#     labels: npt.NDArray[np.int16],
-#     train_rows: npt.NDArray[np.bool],
-#     val_rows: npt.NDArray[np.bool],
-#     batch_size: int = BATCH_SIZE,
-# ) -> tuple[DataLoader, DataLoader]:
-#     """
-#     Build the train and validation loaders over one shared tensor pair.
-
-#     Args:
-#         train_rows, val_rows: boolean row masks from train_val_sep.row_mask, i.e.
-#             selected by game id. Splitting shuffled positions instead would leak:
-#             two positions from the same game differ by a single move, so the model
-#             would see the answer to a validation position during training.
-#     """
-#     x = torch.from_numpy(np.asarray(positions))            # (N, BOARD_DIM) int8
-#     y = torch.from_numpy(np.asarray(labels).astype(np.int64))  # cross_entropy wants int64
-#     dataset = TensorDataset(x, y)
-
-#     def loader(rows: npt.NDArray[np.bool]) -> DataLoader:
-#         sampler = SubsetRandomSampler(np.flatnonzero(rows).tolist())
-#         return DataLoader(dataset, batch_size=batch_size, sampler=sampler)
-
-#     return loader(train_rows), loader(val_rows)
-
-
-def evaluate_epoch(model: nn.Module, forward_fn, loader: DataLoader) -> tuple[float, float]:
+def evaluate_epoch(
+    model: nn.Module,
+    forward_fn: Callable[[nn.Module, torch.Tensor], torch.Tensor],
+    positions_gpu: torch.Tensor,
+    labels_gpu: torch.Tensor,
+    indices_gpu: torch.Tensor,
+    batch_size: int,
+) -> tuple[float, float]:
     model.eval()
-    total_loss, correct, n = 0.0, 0, 0
+    total_loss, correct = 0.0, 0
+    n = len(indices_gpu)
+
     with torch.no_grad():
-        for inputs, labels in loader:
-            inputs, labels = bind_gpu([inputs, labels])
-            logits = forward_fn(model, inputs)
-            total_loss += nn.functional.cross_entropy(logits, labels, reduction="sum").item()
-            correct += (logits.argmax(dim=1) == labels).sum().item()
-            n += labels.size(0)
+        for start in range(0, n, batch_size):
+            idx = indices_gpu[start:start + batch_size]
+            x = positions_gpu[idx]
+            y = labels_gpu[idx]
+            logits = forward_fn(model, x)
+            total_loss += nn.functional.cross_entropy(logits, y, reduction="sum").item()
+            correct += (logits.argmax(dim=1) == y).sum().item()
+
     return total_loss / n, correct / n
 
 
@@ -129,13 +105,18 @@ def train_model(
 ) -> dict:
     """
     Train one model and return the course-format metrics dict.
+
+    The function returns the weights of the BEST epoch, not the last one.
+
+    Random seeding is split in two. This function sets the seed which affects shuffling
+    (torch.randperm). The initial weights are created during model building phase,
+    so the caller must call torch.manual_seed(RANDOM_STATE) in order to have determinism.
     """
     # Set a seed that torch.randperm will use
     torch.manual_seed(seed)
     
     logger = setup_logging(name)
     device = get_device()
-    # model = bind_gpu(model)
     model = model.to(device)
 
     metrics = {
@@ -152,7 +133,7 @@ def train_model(
     train_indices_gpu = torch.from_numpy(train_positions_indices).to(device)
     val_indices_gpu = torch.from_numpy(val_positions_indices).to(device)
 
-    best_val_acc = -1.0;
+    best_val_acc = -1.0
     best_model_state = None
     bad_epochs = 0
     
@@ -217,3 +198,7 @@ def train_model(
     model.load_state_dict(best_model_state)
     
     return metrics
+
+
+
+# TODO: We should probably add evaluate_epoch docstring
