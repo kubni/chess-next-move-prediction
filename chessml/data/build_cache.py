@@ -103,12 +103,3 @@ if __name__ == '__main__':
 
     _, vocab = load_move_vocab()
     build_cache(pgn_path=args.pgn, n_games=args.games, vocab=vocab, split=args.split, out_dir=args.output)
-   
-
-# TODO:
-# 1) Move the helper functions if needed
-# 2) [Important] Check whether the headers + tell/seek is actually helping or not
-# 3) Apparently Lichess changed the naming of some modes at some point. Maybe we should rely on TimeControl header instead of the naming?
-# 4) Color flipping/mirroring?  
-
-# 5) [Important] logging instead of prints 
