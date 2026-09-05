@@ -113,7 +113,7 @@ def train_model(
     so the caller must call torch.manual_seed(RANDOM_STATE) in order to have determinism.
     """
     # Set a seed that torch.randperm will use
-    torch.manual_seed(seed)
+    torch.manual_seed(seed) # TODO: Is this fine?
     
     logger = setup_logging(name)
     device = get_device()
