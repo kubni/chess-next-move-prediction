@@ -1,3 +1,5 @@
+from collections.abc import Callable
+from chessml.encoding.schema import LABEL_DTYPE, POSITION_DTYPE
 import logging
 from pathlib import Path
 
@@ -68,31 +70,31 @@ def save_checkpoint(model: nn.Module, name: str, config: dict, epoch: int) -> Pa
     torch.save({"state_dict": state_dict, "config": config, "epoch": epoch}, path)
     return path
 
-def make_loaders(
-    positions: npt.NDArray[np.int8],
-    labels: npt.NDArray[np.int16],
-    train_rows: npt.NDArray[np.bool],
-    val_rows: npt.NDArray[np.bool],
-    batch_size: int = BATCH_SIZE,
-) -> tuple[DataLoader, DataLoader]:
-    """
-    Build the train and validation loaders over one shared tensor pair.
+# def make_loaders(
+#     positions: npt.NDArray[np.int8],
+#     labels: npt.NDArray[np.int16],
+#     train_rows: npt.NDArray[np.bool],
+#     val_rows: npt.NDArray[np.bool],
+#     batch_size: int = BATCH_SIZE,
+# ) -> tuple[DataLoader, DataLoader]:
+#     """
+#     Build the train and validation loaders over one shared tensor pair.
 
-    Args:
-        train_rows, val_rows: boolean row masks from train_val_sep.row_mask, i.e.
-            selected by game id. Splitting shuffled positions instead would leak:
-            two positions from the same game differ by a single move, so the model
-            would see the answer to a validation position during training.
-    """
-    x = torch.from_numpy(np.asarray(positions))            # (N, BOARD_DIM) int8
-    y = torch.from_numpy(np.asarray(labels).astype(np.int64))  # cross_entropy wants int64
-    dataset = TensorDataset(x, y)
+#     Args:
+#         train_rows, val_rows: boolean row masks from train_val_sep.row_mask, i.e.
+#             selected by game id. Splitting shuffled positions instead would leak:
+#             two positions from the same game differ by a single move, so the model
+#             would see the answer to a validation position during training.
+#     """
+#     x = torch.from_numpy(np.asarray(positions))            # (N, BOARD_DIM) int8
+#     y = torch.from_numpy(np.asarray(labels).astype(np.int64))  # cross_entropy wants int64
+#     dataset = TensorDataset(x, y)
 
-    def loader(rows: npt.NDArray[np.bool]) -> DataLoader:
-        sampler = SubsetRandomSampler(np.flatnonzero(rows).tolist())
-        return DataLoader(dataset, batch_size=batch_size, sampler=sampler)
+#     def loader(rows: npt.NDArray[np.bool]) -> DataLoader:
+#         sampler = SubsetRandomSampler(np.flatnonzero(rows).tolist())
+#         return DataLoader(dataset, batch_size=batch_size, sampler=sampler)
 
-    return loader(train_rows), loader(val_rows)
+#     return loader(train_rows), loader(val_rows)
 
 
 def evaluate_epoch(model: nn.Module, forward_fn, loader: DataLoader) -> tuple[float, float]:
@@ -110,20 +112,31 @@ def evaluate_epoch(model: nn.Module, forward_fn, loader: DataLoader) -> tuple[fl
 
 def train_model(
     model: nn.Module,
-    forward_fn,
+    forward_fn: Callable[[nn.Module, torch.Tensor], torch.Tensor],
     optimizer: torch.optim.Optimizer,
     number_of_epochs: int,
-    train_loader: DataLoader,
-    validation_loader: DataLoader,
+    train_positions_indices: npt.NDArray[np.int64],
+    val_positions_indices: npt.NDArray[np.int64],
+    positions: npt.NDArray[POSITION_DTYPE],
+    labels: npt.NDArray[LABEL_DTYPE],
     name: str,
     config:dict,
+    *,
+    batch_size: int = BATCH_SIZE,
+    patience: int = 2,
+    min_delta: float = 1e-4,
+    seed: int = RANDOM_STATE
 ) -> dict:
     """
     Train one model and return the course-format metrics dict.
     """
+    # Set a seed that torch.randperm will use
+    torch.manual_seed(seed)
+    
     logger = setup_logging(name)
     device = get_device()
-    model = bind_gpu(model)
+    # model = bind_gpu(model)
+    model = model.to(device)
 
     metrics = {
         "train_loss": [], "train_accuracy": [], "train_steps": [],
@@ -134,37 +147,73 @@ def train_model(
     pbar = tqdm(total=number_of_epochs, desc=f"Training {name}")
     pbar.set_postfix({"loss": -1, "accuracy": -1})
 
+    positions_gpu = torch.from_numpy(np.asarray(positions)).to(device)
+    labels_gpu = torch.from_numpy(np.asarray(labels).astype(np.int64)).to(device)
+    train_indices_gpu = torch.from_numpy(train_positions_indices).to(device)
+    val_indices_gpu = torch.from_numpy(val_positions_indices).to(device)
+
+    best_val_acc = -1.0;
+    best_model_state = None
+    bad_epochs = 0
+    
     for epoch in range(number_of_epochs):
         model.train()
-        for inputs, labels in train_loader:
-            inputs, labels = bind_gpu([inputs, labels])
+        train_indices_gpu_permuted = train_indices_gpu[torch.randperm(len(train_indices_gpu), device=device)]
+        for start in range(0, len(train_indices_gpu_permuted), batch_size):
+            idx = train_indices_gpu_permuted[start:start+batch_size]
+            x = positions_gpu[idx]
+            y = labels_gpu[idx] # NOTE: Seems that we can't call it inputs because the argument is called that, but we are changing the type.
 
             # bfloat16 halves the memory traffic on this GPU.
             with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
-                logits = forward_fn(model, inputs)
-                loss = nn.functional.cross_entropy(logits, labels)
+                logits = forward_fn(model, x)
+                loss = nn.functional.cross_entropy(logits, y)
 
             optimizer.zero_grad(set_to_none=True)
             loss.backward()   
             optimizer.step()
-
-            accuracy = (logits.argmax(dim=1) == labels).float().mean().item()
-            metrics["train_loss"].append(loss.item())
-            metrics["train_accuracy"].append(accuracy)
-            metrics["train_steps"].append(training_step)
-
             if training_step % LOG_EVERY == 0:
+                accuracy = (logits.argmax(dim=1) == y).float().mean().item()
+                metrics["train_loss"].append(loss.item())
+                metrics["train_accuracy"].append(accuracy)
+                metrics["train_steps"].append(training_step)
                 logger.info(f"step {training_step} loss {loss.item():.4f} acc {accuracy:.4f}")
             training_step += 1
 
-        val_loss, val_accuracy = evaluate_epoch(model, forward_fn, validation_loader)
+
+            
+        # Calculate accuracy on validation set and hopefully detect overfitting
+        val_loss, val_accuracy = evaluate_epoch(model, forward_fn, positions_gpu, labels_gpu, val_indices_gpu, batch_size)
+
         metrics["val_loss"].append(val_loss)
         metrics["val_accuracy"].append(val_accuracy)
         metrics["val_steps"].append(training_step)
         logger.info(f"epoch {epoch} val_loss {val_loss:.4f} val_acc {val_accuracy:.4f}")
-        save_checkpoint(model, name, config, epoch)
         pbar.set_postfix({"loss": val_loss, "accuracy": val_accuracy})
         pbar.update(1)
 
+        if val_accuracy > best_val_acc + min_delta:
+            best_val_acc = val_accuracy
+
+            # Save the model state that is best currently
+            best_model_state = {k: v.clone() for k, v in model.state_dict().items()}
+            save_checkpoint(model, name, config, epoch)
+            # Reset bad epoch counter
+            bad_epochs = 0
+        else:
+            # If our current val accuracy is worse than the best, we don't break immediately,
+            # but rather if it happens more than ``patience`` times.
+            bad_epochs += 1
+            if bad_epochs >= patience:
+                break
+
     pbar.close()
+
+    # Load the best model (so that model isn't one of the worse ones from "bad epochs")
+    if best_model_state is None:
+        raise ValueError("best_model_state is None.")
+    
+    # Updates the model in-place, so we don't need to return the model 
+    model.load_state_dict(best_model_state)
+    
     return metrics
