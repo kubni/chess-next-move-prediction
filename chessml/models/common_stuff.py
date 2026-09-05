@@ -100,11 +100,11 @@ def get_necessary_stuff_for_training() -> dict:
   
 
     return {
-        "positions":np.load(d / CACHE_FILES["positions"].format(split="trainval")),
-        "labels":np.load(d / CACHE_FILES["labels"].format(split="trainval")),
-        "meta":np.load(d / CACHE_FILES["meta"].format(split="trainval")),
-        "train_positions_indices":np.flatnonzero(games_positions_mask(meta, train_game_ids)),
-        "val_positions_indices":np.flatnonzero(games_positions_mask(meta, val_game_ids)),
+        "positions": positions,
+        "labels": labels,
+        "meta": meta,
+        "train_positions_indices": train_positions_indices,
+        "val_positions_indices": val_positions_indices,
     }
 
 
