@@ -98,10 +98,10 @@ def train_model(
     config:dict,
     *,
     batch_size: int = BATCH_SIZE,
-    patience: int = 2,
+    patience: int = 5,
     min_delta: float = 1e-4,
     seed: int = RANDOM_STATE
-) -> dict:
+) -> tuple[dict, float]:
     """
     Train one model and return the course-format metrics dict.
 
@@ -112,7 +112,7 @@ def train_model(
     so the caller must call torch.manual_seed(RANDOM_STATE) in order to have determinism.
     """
     # Set a seed that torch.randperm will use
-    torch.manual_seed(seed) # TODO: Is this fine?
+    torch.manual_seed(seed) 
     
     logger = setup_logging(name)
     device = get_device()
@@ -196,7 +196,7 @@ def train_model(
     # Updates the model in-place, so we don't need to return the model 
     model.load_state_dict(best_model_state)
     
-    return metrics
+    return metrics, best_val_acc
 
 
 
