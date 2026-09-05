@@ -36,13 +36,13 @@ def save_train_val_ids_separately(out_dir: Path = DEFAULT_CACHE_DIR, val_every_n
 
 
 
-def row_mask(meta: npt.NDArray[META_DTYPE], game_ids: npt.NDArray[META_DTYPE]) -> npt.NDArray[np.bool]:
+def games_positions_mask(meta: npt.NDArray[META_DTYPE], game_ids: npt.NDArray[META_DTYPE]) -> npt.NDArray[np.bool]:
     """
     Returns a boolean mask (an array of True/False) corresponding to the given game ids.
     For every game from game_id, we will get X True values in succession, where X is the number of moves in that game.
     This will allow us to filter positions and labels and get only the positions of games that we want to use.
     Example:
-        mask = row_mask(meta, val_game_ids)
+        mask = games_positions_mask(meta, val_game_ids)
         val_positions = positions[mask]
     """
     return np.isin(meta[:, META_GAME_ID], game_ids)

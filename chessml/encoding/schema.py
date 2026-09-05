@@ -47,13 +47,14 @@ CACHE_FILES = {
     "meta":      "{split}_meta.npy",
     "seq_flat":  "{split}_seq_flat.npy",
     "seq_off":   "{split}_seq_off.npy",
-    
 }
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]   
-VOCAB_PATH = PROJECT_ROOT / "artifacts" / "move_vocab.json"
+ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 DEFAULT_CACHE_DIR = PROJECT_ROOT / "artifacts" / "cache"
-
+VOCAB_PATH = ARTIFACTS_DIR / "move_vocab.json"
+MODELS_DIR = ARTIFACTS_DIR / "models"
+METRICS_DIR = ARTIFACTS_DIR / "metrics"
 
 # TODO: Check whether some of this stuff should be moved to some other file
