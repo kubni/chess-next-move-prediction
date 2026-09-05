@@ -31,8 +31,8 @@ def save_train_val_ids_separately(out_dir: Path = DEFAULT_CACHE_DIR, val_every_n
     assert len(val_game_ids) > 0
 
     # Cache the separated train and val indices, which will be used to differentiate which position
-    np.save(file=DEFAULT_CACHE_DIR / CACHE_FILES["train_game_ids"], arr=train_game_ids)
-    np.save(file=DEFAULT_CACHE_DIR / CACHE_FILES["val_game_ids"], arr=val_game_ids)
+    np.save(file=out_dir / CACHE_FILES["train_game_ids"], arr=train_game_ids)
+    np.save(file=out_dir / CACHE_FILES["val_game_ids"], arr=val_game_ids)
 
 
 

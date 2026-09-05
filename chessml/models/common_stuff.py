@@ -100,16 +100,16 @@ def get_necessary_stuff_for_training() -> dict:
   
 
     return {
-        "positions":np.load(d / CACHE_FILES["positions"].format(split="trainval")),
-        "labels":np.load(d / CACHE_FILES["labels"].format(split="trainval")),
-        "meta":np.load(d / CACHE_FILES["meta"].format(split="trainval")),
-        "train_positions_indices":np.flatnonzero(games_positions_mask(meta, train_game_ids)),
-        "val_positions_indices":np.flatnonzero(games_positions_mask(meta, val_game_ids)),
+        "positions": positions,
+        "labels": labels,
+        "meta": meta,
+        "train_positions_indices": train_positions_indices,
+        "val_positions_indices": val_positions_indices,
     }
 
 
 
-def build_and_train(build_model_fn: Callable[[], nn.Module], model_name: str, batch_size: int, num_epochs: int, data_for_training: dict) -> tuple[nn.Module, dict[str, float]]:
+def build_and_train(build_model_fn: Callable[[], nn.Module], model_name: str, batch_size: int, num_epochs: int, data_for_training: dict, learning_rates: tuple[float, ...] = (1e-3, 3e-3, 1e-2, 3e-2, 1e-1)) -> tuple[nn.Module, dict[str, float]]:
 
     positions = data_for_training["positions"]
     labels = data_for_training["labels"]
@@ -125,6 +125,7 @@ def build_and_train(build_model_fn: Callable[[], nn.Module], model_name: str, ba
         positions,
         labels,
         model_name,
+        learning_rates,
         batch_size=batch_size,
         num_epochs=num_epochs,
     )
