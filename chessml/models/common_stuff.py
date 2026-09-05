@@ -108,6 +108,19 @@ def get_necessary_stuff_for_training() -> dict:
     }
 
 
+def get_necessary_stuff_for_testing() -> dict:
+    d = DEFAULT_CACHE_DIR
+    positions = np.load(d / CACHE_FILES["positions"].format(split="test"))
+    labels    = np.load(d / CACHE_FILES["labels"].format(split="test"))
+    meta      = np.load(d / CACHE_FILES["meta"].format(split="test"))
+
+    return {
+        "positions": positions,
+        "labels": labels,
+        "meta": meta,
+    }
+
+
 
 def build_and_train(build_model_fn: Callable[[], nn.Module], model_name: str, batch_size: int, num_epochs: int, data_for_training: dict, learning_rates: tuple[float, ...] = (1e-3, 3e-3, 1e-2, 3e-2, 1e-1)) -> tuple[nn.Module, dict[str, float]]:
 
