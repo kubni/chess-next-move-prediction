@@ -11,6 +11,7 @@ __pycache__/
 # Keš 
 artifacts/cache/
 # Checkpoint-i: ignorišu se dok se eksperimentiše, finalni se dodaju sa git add -f
+artifacts/models/*_lr*.pt
 
 # Devenv
 .envrc

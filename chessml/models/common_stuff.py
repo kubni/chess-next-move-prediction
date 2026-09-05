@@ -3,7 +3,7 @@ from collections.abc import Callable
 from chessml.eval.metrics import evaluate
 from chessml.data.train_val_sep import games_positions_mask
 from chessml.encoding.schema import POSITION_DTYPE, LABEL_DTYPE, DEFAULT_CACHE_DIR, CACHE_FILES
-from chessml.train import train_model, RANDOM_STATE
+from chessml.train import train_model, RANDOM_STATE, save_checkpoint
 from chessml.encoding.move_vocab import VOCAB_SIZE, load_move_vocab
 from chessml.encoding.board_planes import FEATURES, to_planes
 
@@ -50,39 +50,42 @@ def try_multiple_learning_rates(
     batch_size: int = 4096,
     num_epochs: int = 150,
 ) -> tuple[dict[str, float], nn.Module]:
-    torch.manual_seed(RANDOM_STATE)
     lr_results = {}
     best_model: nn.Module | None = None
     best_acc = -1.0
+    best_lr = None
+
     for lr in learning_rates:
-        # print("LR: ", lr, "\n ACC: ", acc)
+        torch.manual_seed(RANDOM_STATE)
 
         model = build_model_fn()
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-        metrics, val_acc = train_model(model=model,
-                    forward_fn=forward_fn,
-                    optimizer=optimizer,
-                    number_of_epochs=num_epochs,
-                    train_positions_indices=train_positions_indices,
-                    val_positions_indices=val_positions_indices,
-                    positions=positions,
-                    labels=labels,
-                    name=name,
-                    config={"lr": lr},
-                    batch_size=batch_size,
-                    seed=RANDOM_STATE
-                    )
+        metrics, val_acc = train_model(
+            model=model,
+            forward_fn=forward_fn,
+            optimizer=optimizer,
+            number_of_epochs=num_epochs,
+            train_positions_indices=train_positions_indices,
+            val_positions_indices=val_positions_indices,
+            positions=positions,
+            labels=labels,
+            name=f"{name}_lr{lr}",
+            config={"lr": lr},
+            batch_size=batch_size,
+            seed=RANDOM_STATE,
+        )
 
         lr_results[str(lr)] = val_acc
 
         if val_acc > best_acc:
-            best_acc = val_acc
-            best_model = model
+            best_acc, best_model, best_lr = val_acc, model, lr
 
     if best_model is None:
         raise ValueError("Error: learning_rates must not be empty")
-    
+
+    save_checkpoint(best_model, name, {"lr": best_lr, "best_val_acc": best_acc}, epoch=-1)
+
     return lr_results, best_model
 
 
